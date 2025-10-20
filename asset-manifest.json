@@ -1,0 +1,17 @@
+{
+  "files": {
+    "main.css": "/KPIMappingApp/static/css/main.064d61cb.css",
+    "main.js": "/KPIMappingApp/static/js/main.4ec958df.js",
+    "static/js/977.8f327253.chunk.js": "/KPIMappingApp/static/js/977.8f327253.chunk.js",
+    "static/js/51.a5ec0ac7.chunk.js": "/KPIMappingApp/static/js/51.a5ec0ac7.chunk.js",
+    "index.html": "/KPIMappingApp/index.html",
+    "main.064d61cb.css.map": "/KPIMappingApp/static/css/main.064d61cb.css.map",
+    "main.4ec958df.js.map": "/KPIMappingApp/static/js/main.4ec958df.js.map",
+    "977.8f327253.chunk.js.map": "/KPIMappingApp/static/js/977.8f327253.chunk.js.map",
+    "51.a5ec0ac7.chunk.js.map": "/KPIMappingApp/static/js/51.a5ec0ac7.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.064d61cb.css",
+    "static/js/main.4ec958df.js"
+  ]
+}
