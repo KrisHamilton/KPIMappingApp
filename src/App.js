@@ -884,6 +884,27 @@ function App() {
   const reactFlowInstanceRef = useRef(null);
   const isDraggingRef = useRef(false); // guard rebuilds during drag
 
+  // New: prompt panel state + the predefined prompt text
+  const [promptVisible, setPromptVisible] = useState(false);
+  const measurementPrompt = `You are acting as a domain expert assistant embedded in a KPI mapping application. Your role is to analyze structured input (JSON) that maps KPIs to their drivers and associated Pega functionalities ("levers") and generate a tailored measurement framework for each KPI.
+Please prioritize your response based on the following:
+
+Use the JSON structure as your primary knowledge source. It defines the KPI hierarchy and the Pega levers that influence each driver.
+Use https://docs.pega.com as a preferred reference for implementation details, best practices, and component usage within Pega.
+You may also draw from broader domain knowledge in enterprise performance management, customer experience, and intelligent automation where relevant and helpful—but clearly distinguish when insights are based on general best practices vs. Pega-specific capabilities.
+Act as a Pega implementation strategist. Your suggestions should reflect how a Pega architect or business analyst would design data collection, reporting, and automation for each KPI.
+Be specific and actionable. Avoid generic advice. Provide concrete data points, metrics, and implementation ideas using Pega components (e.g., case types, adaptive models, decision tables, CDH strategies).
+Include strategic best practices for tracking and improving KPI performance, such as:
+
+Designing closed-loop feedback systems using adaptive analytics and interaction history
+Ensuring data quality and governance across channels and case types
+Using real-time monitoring, alerts, and thresholds to proactively manage KPI performance
+Aligning KPI tracking with business goals, operational workflows, and customer journeys
+Applying continuous improvement using performance insights to refine strategies, rules, and models
+Leveraging Pega’s AI and decisioning capabilities to automate and optimize interventions
+
+Here is the JSON structure to analyze:`;
+
   const dragEnabled = layoutMode === "island" && dragToggle; // only allow in island
 
   // Build nodes/edges (skip while dragging to avoid flicker/disappear)
@@ -1043,6 +1064,28 @@ function App() {
       URL.revokeObjectURL(url);
     });
 
+  // New: copy-to-clipboard helper for the prompt
+  const copyPromptToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(measurementPrompt);
+      // Lightweight user feedback
+      alert("Prompt copied to clipboard");
+    } catch (err) {
+      // Fallback: create temporary textarea
+      const ta = document.createElement("textarea");
+      ta.value = measurementPrompt;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        alert("Prompt copied to clipboard");
+      } catch {
+        alert("Copy failed — please select and copy manually.");
+      }
+      document.body.removeChild(ta);
+    }
+  };
+
   return (
     <div className="app-root">
       <header className="topbar">
@@ -1162,6 +1205,35 @@ function App() {
         </section>
       </div>
 
+      {/* New: Measurement Framework Prompt panel (bottom-left) */}
+      <div className={`prompt-panel ${promptVisible ? "open" : "closed"}`} aria-hidden={!promptVisible}>
+        {!promptVisible ? (
+          <button
+            className="prompt-toggle btn small"
+            onClick={() => setPromptVisible(true)}
+            title="Show Measurement Framework Prompt"
+          >
+            Show Measurement Framework Prompt
+          </button>
+        ) : (
+          <div className="prompt-content">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <strong>Measurement Framework Prompt</strong>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button className="btn small" onClick={copyPromptToClipboard}>Copy</button>
+                <button className="btn small" onClick={() => setPromptVisible(false)}>Hide</button>
+              </div>
+            </div>
+            <textarea
+              readOnly
+              value={measurementPrompt}
+              rows={8}
+              style={{ width: "100%", marginTop: 8, resize: "vertical", padding: 8, background: "#061322", color: "#e6eef6", border: "1px solid #15202b", borderRadius: 6 }}
+            />
+          </div>
+        )}
+      </div>
+
       <style>{`
         body,html,#root{height:100%;margin:0}
         .app-root{font-family:Inter,Arial,sans-serif;color:#e6eef6;background:#071022;min-height:100vh}
@@ -1187,6 +1259,16 @@ function App() {
         }
         .export-clean .react-flow {
           background: #fff !important;
+        }
+
+        /* Prompt panel (bottom-left) */
+        .prompt-panel { position: fixed; left: 12px; bottom: 12px; z-index: 60; max-width: 420px; width: calc(35vw + 120px); }
+        .prompt-panel.closed .prompt-toggle { display: inline-block; }
+        .prompt-panel.open .prompt-toggle { display: none; }
+        .prompt-content { background:#071827;border:1px solid #0b1220;padding:10px;border-radius:8px;box-shadow:0 6px 18px rgba(2,6,23,0.6) }
+        .prompt-toggle{ white-space:nowrap; }
+        @media (max-width: 900px) {
+          .prompt-panel { width: 320px; left: 8px; bottom: 8px; }
         }
       `}</style>
     </div>
