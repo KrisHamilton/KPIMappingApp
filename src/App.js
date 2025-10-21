@@ -365,9 +365,15 @@ function buildFlowFromData(
     // If filterNodeId present, filter nodes/edges to the relevant subgraph
     if (filterNodeId) {
       const keepIds = new Set();
-      // find KPI or driver that matches filterNodeId
+      let matchedAsKpi = false;
+      let matchedAsDriver = false;
+      let matchedAsLever = false;
+
+      // Discover how the filter id matches (kpi / driver / lever)
       data.kpis.forEach((kpi) => {
         if (kpi.id === filterNodeId) {
+          matchedAsKpi = true;
+          // KPI clicked -> keep whole KPI subtree
           keepIds.add(kpi.id);
           (kpi.drivers || []).forEach((d) => {
             keepIds.add(d.id);
@@ -376,13 +382,28 @@ function buildFlowFromData(
         } else {
           (kpi.drivers || []).forEach((d) => {
             if (d.id === filterNodeId) {
+              matchedAsDriver = true;
+              // Driver clicked -> keep KPI + this driver subtree
               keepIds.add(kpi.id);
               keepIds.add(d.id);
               (d.levers || []).forEach((l) => keepIds.add(l.id));
             }
+            (d.levers || []).forEach((l) => {
+              if (l.id === filterNodeId) {
+                matchedAsLever = true;
+                // Lever clicked -> include only this lever, its driver, and that KPI
+                keepIds.add(kpi.id);
+                keepIds.add(d.id);
+                keepIds.add(l.id);
+              }
+            });
           });
         }
       });
+
+      // NOTE: when matchedAsLever is true we DO NOT add other drivers or other levers.
+      // matchedAsDriver and matchedAsKpi behavior remains unchanged (show driver with its levers or full KPI subtree).
+
       // filter
       const filteredNodes = tmpNodes.filter((n) => keepIds.has(n.id));
       const filteredEdges = tmpEdges.filter((e) => keepIds.has(e.source) && keepIds.has(e.target));
@@ -747,6 +768,7 @@ function SidebarTree({
                           <small style={{ color: "#cfeef8" }}>{d.name}</small>
                         </div>
                         <div style={{ display: "flex", gap: 6 }}>
+                          <button className="link" onClick={() => { onFocusIslandKpi(k.id); onCenterKpi(d.id); }}>Focus</button>
                           <button className="link" onClick={() => renameNode("driver", { kpiId: k.id, driverId: d.id })}>Rename</button>
                           <button className="link" onClick={() => { setAddingLever({ kpiId: k.id, drvId: d.id }); setNewName(""); }}>+Lvr</button>
                           <button className="link danger" onClick={() => removeDriver(k.id, d.id)}>Del</button>
@@ -760,13 +782,40 @@ function SidebarTree({
                               const next = JSON.parse(JSON.stringify(data));
                               const kpi = next.kpis.find((x) => x.id === k.id);
                               const drv = kpi.drivers.find((x) => x.id === d.id);
-                              drv.levers.push({ id: leverObj.id, name: leverObj.name });
-                              next.positions = next.positions || {};
-                              next.positions[leverObj.id] = {
-                                x: (next.positions[d.id]?.x || 400) + 220,
-                                y: (next.positions[d.id]?.y || 200),
-                              };
-                              setData(next);
+
+                              // normalize helper
+                              const normalize = (s) => (s || "").trim().toLowerCase();
+
+                              // Search for existing lever by id or by name (case-insensitive)
+                              const allLevers = next.kpis.flatMap((kp) =>
+                                (kp.drivers || []).flatMap((dr) => dr.levers || [])
+                              );
+                              const existing = allLevers.find(
+                                (lv) => lv.id === leverObj.id || normalize(lv.name) === normalize(leverObj.name)
+                              );
+
+                              const leverIdToUse = existing ? existing.id : leverObj.id;
+                              const leverNameToUse = existing ? existing.name : leverObj.name;
+
+                              // Ensure we don't duplicate the lever under the same driver
+                              if (!drv.levers.some((l) => l.id === leverIdToUse)) {
+                                drv.levers.push({ id: leverIdToUse, name: leverNameToUse });
+
+                                next.positions = next.positions || {};
+                                // Only set a position for a newly created lever (i.e., no existing position)
+                                if (!next.positions[leverIdToUse]) {
+                                  next.positions[leverIdToUse] = {
+                                    x: (next.positions[d.id]?.x || 400) + 220,
+                                    y: (next.positions[d.id]?.y || 200),
+                                  };
+                                }
+
+                                setData(next);
+                              } else {
+                                // already present for this driver — no change
+                                // still close selector
+                              }
+
                               setAddingLever(null);
                               setNewName("");
                             }}
@@ -901,9 +950,7 @@ Ensuring data quality and governance across channels and case types
 Using real-time monitoring, alerts, and thresholds to proactively manage KPI performance
 Aligning KPI tracking with business goals, operational workflows, and customer journeys
 Applying continuous improvement using performance insights to refine strategies, rules, and models
-Leveraging Pega’s AI and decisioning capabilities to automate and optimize interventions
-
-Here is the JSON structure to analyze:`;
+Leveraging Pega’s AI and decisioning capabilities to automate and optimize interventions`;
 
   const dragEnabled = layoutMode === "island" && dragToggle; // only allow in island
 
@@ -921,9 +968,9 @@ Here is the JSON structure to analyze:`;
     setRfEdges(edges);
   }, [data, layoutMode, filterNodeId, islandKpiId, dragEnabled]);
 
-  // Toggle filter on click (unchanged)
+  // Toggle filter on click (updated: allow lever clicks to filter)
   const onNodeClick = (_event, node) => {
-    if (node?.data?.category === "lever") return;
+    if (!node?.id) return;
     setFilterNodeId((prev) => (node.id === prev ? null : node.id));
   };
 
@@ -1064,21 +1111,25 @@ Here is the JSON structure to analyze:`;
       URL.revokeObjectURL(url);
     });
 
-  // New: copy-to-clipboard helper for the prompt
+  // New: copy-to-clipboard helper for the prompt (includes current JSON)
   const copyPromptToClipboard = async () => {
+    const combined = `${measurementPrompt}
+
+Here is the current JSON structure to analyze:
+${JSON.stringify(data, null, 2)}`;
+
     try {
-      await navigator.clipboard.writeText(measurementPrompt);
-      // Lightweight user feedback
-      alert("Prompt copied to clipboard");
+      await navigator.clipboard.writeText(combined);
+      alert("Prompt + JSON copied to clipboard");
     } catch (err) {
       // Fallback: create temporary textarea
       const ta = document.createElement("textarea");
-      ta.value = measurementPrompt;
+      ta.value = combined;
       document.body.appendChild(ta);
       ta.select();
       try {
         document.execCommand("copy");
-        alert("Prompt copied to clipboard");
+        alert("Prompt + JSON copied to clipboard");
       } catch {
         alert("Copy failed — please select and copy manually.");
       }
@@ -1206,7 +1257,12 @@ Here is the JSON structure to analyze:`;
       </div>
 
       {/* New: Measurement Framework Prompt panel (bottom-left) */}
-      <div className={`prompt-panel ${promptVisible ? "open" : "closed"}`} aria-hidden={!promptVisible}>
+      <div
+        className={`prompt-panel ${promptVisible ? "open" : "closed"}`}
+        aria-hidden={!promptVisible}
+        // move the prompt right when the sidebar is open so it doesn't overlap sidebar content (JSON editor buttons)
+        style={{ left: sidebarOpen ? "384px" : "12px", bottom: 12 }}
+      >
         {!promptVisible ? (
           <button
             className="prompt-toggle btn small"
